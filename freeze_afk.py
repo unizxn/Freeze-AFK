@@ -16,11 +16,17 @@ if platform.system().lower() == "linux":
 
 from seleniumbase import SB
 
-# Discord Token - 从环境变量读取，或直接填写
+# Discord Token - 从环境变量读取
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 
 # WARP 代理地址（可选，推荐使用）
 WARP_PROXY = os.environ.get("WARP_PROXY", "socks5://127.0.0.1:40000")
+
+# 最大运行时长（分钟），0 = 无限
+MAX_RUNTIME = int(os.environ.get("MAX_RUNTIME", "0"))
+
+# 每个 session 赚币时长（秒）
+SESSION_DURATION = 1200  # 20 分钟
 
 
 def log(msg):
@@ -31,7 +37,7 @@ def log(msg):
 def wait_turnstile(sb, timeout=120):
     """
     等待 Turnstile 验证通过
-    
+
     原理：
     1. WARP IP 是 Cloudflare 信任的，challenge 会降级为 managed 类型
     2. SeleniumBase UC 模式自动处理验证框点击
@@ -39,10 +45,9 @@ def wait_turnstile(sb, timeout=120):
     """
     start = time.time()
     last_click = 0
-    
+
     while time.time() - start < timeout:
         try:
-            # 尝试从 DOM 获取 token
             val = sb.execute_script(
                 "return document.querySelector('input[name=\"cf-turnstile-response\"]')?.value || "
                 "window.turnstileToken || '';"
@@ -51,8 +56,7 @@ def wait_turnstile(sb, timeout=120):
                 return str(val)
         except:
             pass
-        
-        # 每 5 秒尝试点击验证框
+
         now = time.time()
         if now - last_click > 5:
             try:
@@ -61,14 +65,14 @@ def wait_turnstile(sb, timeout=120):
             except:
                 pass
         time.sleep(2)
-    
+
     return None
 
 
 def login_via_discord_token(sb):
     """
     通过 Discord Token 登录 FreezeHost
-    
+
     原理：
     1. 点击 FreezeHost 的 Discord 登录按钮
     2. 在 discord.com 页面注入 token 到 localStorage
@@ -99,8 +103,7 @@ def login_via_discord_token(sb):
     # 如果跳转到 Discord 登录页
     if "discord.com" in sb.get_current_url():
         log("Inject Discord token...")
-        
-        # 注入 token 到 localStorage
+
         sb.execute_script(f"""(function() {{
             var token = '{DISCORD_TOKEN}';
             var f = document.createElement("iframe");
@@ -110,7 +113,7 @@ def login_via_discord_token(sb):
             try {{ localStorage.setItem("token", '"'+token+'"'); }} catch(e) {{}}
             document.body.removeChild(f);
         }})();""")
-        
+
         log("Reload to apply token...")
         sb.driver.refresh()
         time.sleep(8)
@@ -118,7 +121,6 @@ def login_via_discord_token(sb):
         url = sb.get_current_url()
         log(f"URL: {url}")
 
-        # Token 无效会跳到登录页
         if "discord.com/login" in url:
             log("Token invalid!")
             return False
@@ -147,7 +149,7 @@ def login_via_discord_token(sb):
 def run_earn_session(sb, session_num):
     """
     执行一次挂机赚币 session
-    
+
     每个 session 最长 20 分钟（1200秒）
     页面 JavaScript 自动处理 WebSocket 连接和挑战响应
     """
@@ -166,22 +168,27 @@ def run_earn_session(sb, session_num):
     # 等待 Turnstile 验证
     log("Waiting Turnstile...")
     token = wait_turnstile(sb, timeout=120)
-    
+
     if token:
         log(f"Turnstile passed! Token: {token[:30]}...")
-        log(f"Session #{session_num} earning for 1200s (20 min)...")
-        
-        # 保持页面 20 分钟，页面 JS 自动赚币
+        log(f"Session #{session_num} earning for {SESSION_DURATION}s ({SESSION_DURATION//60} min)...")
+
         start = time.time()
-        while time.time() - start < 1200:
+        while time.time() - start < SESSION_DURATION:
             try:
                 if "discord.com" in sb.get_current_url():
                     log("Session expired during earning")
                     break
             except:
                 break
+
+            # 检查最大运行时长
+            if MAX_RUNTIME > 0 and (time.time() - global_start) > MAX_RUNTIME * 60:
+                log("Max runtime reached!")
+                return None  # None 表示应该退出
+
             time.sleep(30)
-        
+
         log(f"Session #{session_num} completed!")
         return True
     else:
@@ -194,48 +201,59 @@ def run_earn_session(sb, session_num):
 
 
 def main():
+    global global_start
+
     if not DISCORD_TOKEN:
         print("ERROR: DISCORD_TOKEN not set!")
         print("Set via: export DISCORD_TOKEN='your_token'")
-        print("Or edit the script and fill in DISCORD_TOKEN variable.")
+        print("Or set as GitHub Secret: DISCORD_TOKEN")
         return
 
     log("=" * 50)
     log("FreezeHost AFK - Auto Earn Coins")
     log("=" * 50)
-    log(f"Proxy: {WARP_PROXY}")
+    log(f"Proxy: {WARP_PROXY or 'none'}")
+    log(f"Max runtime: {MAX_RUNTIME} min {'(unlimited)' if MAX_RUNTIME == 0 else ''}")
+    log(f"Session duration: {SESSION_DURATION}s ({SESSION_DURATION//60} min)")
     log("=" * 50)
+
+    global_start = time.time()
 
     # SeleniumBase UC 配置
     sb_options = {
-        "uc": True,           # Undetected Chrome 模式
+        "uc": True,
         "test": True,
-        "headed": True,       # 需要 headed 模式（Turnstile 需要）
+        "headed": True,
         "chromium_arg": "--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--window-size=1280,720",
     }
-    
-    # 如果配置了 WARP 代理
+
     if WARP_PROXY:
         sb_options["proxy"] = WARP_PROXY
 
     with SB(**sb_options) as sb:
-        # 登录
         if not login_via_discord_token(sb):
             log("Login failed!")
             return
         log("Login successful!")
 
-        # 无限循环挂机
         session = 0
         while True:
+            # 检查最大运行时长
+            if MAX_RUNTIME > 0 and (time.time() - global_start) > MAX_RUNTIME * 60:
+                log("Max runtime reached, exiting!")
+                break
+
             session += 1
             log(f"\n{'='*30}")
             log(f"Session #{session}")
             log(f"{'='*30}")
-            
-            if not run_earn_session(sb, session):
+
+            result = run_earn_session(sb, session)
+            if result is None:
+                break
+            if not result:
                 log("Session failed, retrying...")
-            
+
             time.sleep(5)
 
     log("Done!")

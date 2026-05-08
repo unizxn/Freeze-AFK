@@ -1,0 +1,39 @@
+name: AFK Earn
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: '运行时长（分钟）'
+        required: false
+        default: '300'
+  schedule:
+    - cron: '0 */8 * * *'
+
+jobs:
+  earn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install WARP
+        uses: fscarmen/warp-on-actions@v2.1
+
+      - name: Install dependencies
+        run: |
+          pip install seleniumbase pyvirtualdisplay
+          seleniumbase install chromedriver
+
+      - name: Run AFK Earn
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          WARP_PROXY: "socks5://127.0.0.1:40000"
+          MAX_RUNTIME: ${{ github.event.inputs.duration || '300' }}
+        run: python freeze_afk.py

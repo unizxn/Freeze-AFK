@@ -15,7 +15,9 @@
 - session 结束后自动刷新页面重新过 Turnstile
 - 每小时约 60 币
 
-## 前置要求
+## 本地运行
+
+### 前置要求
 
 1. **Python 3.8+**
 2. **SeleniumBase**：`pip install seleniumbase`
@@ -40,16 +42,16 @@ curl --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace
 # 应该看到 warp=on
 ```
 
-## 使用方法
+### 使用方法
 
-### 方式一：环境变量
+#### 方式一：环境变量
 
 ```bash
 export DISCORD_TOKEN="your_discord_token_here"
 python freeze_afk.py
 ```
 
-### 方式二：直接填写
+#### 方式二：直接填写
 
 编辑脚本中的 `DISCORD_TOKEN` 变量：
 
@@ -57,13 +59,31 @@ python freeze_afk.py
 DISCORD_TOKEN = "your_discord_token_here"
 ```
 
-### 自定义 WARP 代理地址
+### 自定义配置
 
-```bash
-export WARP_PROXY="socks5://127.0.0.1:40000"
-# 或设为空字符串禁用代理
-export WARP_PROXY=""
-```
+| 环境变量 | 默认值 | 说明 |
+|---------|-------|------|
+| `DISCORD_TOKEN` | - | Discord Token（必填） |
+| `WARP_PROXY` | `socks5://127.0.0.1:40000` | WARP 代理地址，设为空禁用 |
+| `MAX_RUNTIME` | `0`（无限） | 最大运行时长（分钟） |
+
+## GitHub Actions 运行
+
+支持在 GitHub Actions 上自动运行，无需自己的服务器。
+
+### 设置步骤
+
+1. **Fork 本仓库**
+2. **添加 Secret**：进入仓库 Settings → Secrets and variables → Actions → New repository secret，添加 `DISCORD_TOKEN`
+3. **运行方式**：
+   - **手动触发**：Actions 页面 → AFK Earn → Run workflow，可设置运行时长（分钟）
+   - **定时运行**：默认每 8 小时自动运行一次，每次 5 小时（300 分钟）
+
+### 运行时长说明
+
+- GitHub Actions 最长运行 6 小时
+- 默认每次运行 300 分钟（5 小时），约赚 300 币
+- 可手动触发时自定义时长
 
 ## 获取 Discord Token
 
@@ -80,7 +100,7 @@ export WARP_PROXY=""
 4. 等待 Turnstile 验证通过（WARP IP + UC 模式自动通过）
 5. 保持页面 20 分钟，页面 JS 自动赚币
 6. Session 结束 → 刷新页面 → 重新过 Turnstile → 下一轮
-7. 无限循环
+7. 循环直到达到最大运行时长
 ```
 
 ## 注意事项
