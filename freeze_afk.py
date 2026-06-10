@@ -4,6 +4,7 @@ FreezeHost AFK - 自动挂机赚币脚本（支持多实例）
 使用 SeleniumBase UC 模式绕过 Cloudflare Turnstile + 广告拦截检测
 """
 import os
+import random
 import time
 import platform
 import sys
@@ -16,12 +17,13 @@ if platform.system().lower() == "linux":
     os.environ["DISPLAY"] = disp.new_display_var
 
 from seleniumbase import SB
+from selenium.webdriver.common.action_chains import ActionChains
 
 # Discord Token - 从环境变量读取，支持多个（逗号分隔）
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 
 # WARP 代理地址（可选，推荐使用）
-WARP_PROXY = os.environ.get("WARP_PROXY", "socks5://127.0.0.1:40000")
+WARP_PROXY = os.environ.get("WARP_PROXY", "")
 
 # 最大运行时长（分钟），0 = 无限
 MAX_RUNTIME = int(os.environ.get("MAX_RUNTIME", "0"))
@@ -32,6 +34,10 @@ SESSION_DURATION = 1200  # 20 分钟
 # 实例编号（从命令行参数或环境变量获取）
 INSTANCE_ID = int(os.environ.get("INSTANCE_ID", "0"))
 LOG_FILE = os.environ.get("LOG_FILE", "")
+
+# telegram token
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
 def log(msg):
@@ -142,41 +148,81 @@ def click_start_afk(sb):
     except:
         pass
 
-    try:
-        sb.execute_script("""
-            var btn = document.getElementById('start-afk-btn');
-            if(btn){ btn.disabled = false; btn.textContent = 'Start AFK Session'; }
-        """)
-    except:
-        pass
-
     for attempt in range(3):
         try:
-            sb.wait_for_element_visible("#start-afk-btn", timeout=5)
-            sb.click("#start-afk-btn")
-            log("Clicked Start AFK!")
-            time.sleep(3)
-            ws_state = sb.execute_script(
-                "return (typeof ws !== 'undefined' && ws) ? ws.readyState : -1;"
-            )
-            log("WebSocket state: %s" % ws_state)
-            return True
-        except Exception as e:
-            log("Attempt %d: %s" % (attempt + 1, str(e)[:80]))
+            sb.wait_for_element_visible("#afk-action-trigger", timeout=5)
+            element = sb.find_element("#afk-action-trigger")
+            
+            # Scroll element to the center of the viewport to prevent out-of-bounds errors
+            sb.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+            time.sleep(1)
+            
+            actions = ActionChains(sb.driver)
+            size = element.size
+            w = size.get('width', 100)
+            h = size.get('height', 40)
+            
+            # 1. Move from outside (right/bottom) onto the button
+            log("Moving mouse from outside onto the button...")
+            actions.move_to_element_with_offset(element, int(w * 1.2), int(h * 1.5))
+            actions.pause(0.5)
+            actions.move_to_element(element)
+            actions.pause(0.5)
+            
+            # 2. Move away (left/top)
+            log("Moving mouse away from the button...")
+            actions.move_to_element_with_offset(element, -int(w * 1.2), -int(h * 1.5))
+            actions.pause(0.5)
+            
+            # 3. Move back onto the button
+            log("Moving mouse back onto the button...")
+            actions.move_to_element(element)
+            actions.pause(1.0) # wait 1s
+            
+            # 4. Hold down and wait for it to disappear or raise "element not interactable"
+            log("Holding Start AFK button...")
+            actions.click_and_hold(element).perform()
+            
+            start_hold = time.time()
+            success = False
+            while time.time() - start_hold < 2.0:  # max hold 2 seconds
+                time.sleep(0.05) # check every 50ms
+                try:
+                    # Accessing properties of disappearing elements will raise
+                    # stale element reference or element not interactable exceptions
+                    if not element.is_displayed():
+                        success = True
+                        break
+                    _ = element.size
+                except Exception as e:
+                    err_msg = str(e)
+                    if "element not interactable" in err_msg or "has no size and location" in err_msg or "stale" in err_msg:
+                        log("Expected visibility exception caught during hold: %s" % err_msg)
+                        success = True
+                        break
+            
+            # Release mouse button
             try:
-                sb.execute_script("""
-                    if(typeof adblockerDetected !== 'undefined') adblockerDetected = false;
-                    document.getElementById('start-afk-btn')?.click();
-                """)
-                time.sleep(3)
-                ws_state = sb.execute_script(
-                    "return (typeof ws !== 'undefined' && ws) ? ws.readyState : -1;"
-                )
-                log("JS click - WS state: %s" % ws_state)
-                if ws_state == 0 or ws_state == 1:
-                    return True
+                release_actions = ActionChains(sb.driver)
+                release_actions.release().perform()
             except:
                 pass
+            log("Released Start AFK!")
+            
+            if success or not sb.is_element_visible("#afk-action-trigger"):
+                log("Button #afk-action-trigger is no longer visible/interactable, session started!")
+                return True
+            raise Exception("Button #afk-action-trigger is still visible after 2s holding")
+        except Exception as e:
+            err_msg = str(e)
+            if "element not interactable" in err_msg or "has no size and location" in err_msg:
+                log("Caught expected exception in outer block: %s" % err_msg)
+                try:
+                    ActionChains(sb.driver).release().perform()
+                except:
+                    pass
+                return True
+            log("Attempt %d failed: %s" % (attempt + 1, err_msg[:200]))
     return False
 
 
@@ -207,6 +253,7 @@ def run_earn_session(sb, session_num, token):
 
     if not click_start_afk(sb):
         log("WARNING: Start AFK button click failed!")
+        return False
 
     log("Earning for %ds..." % SESSION_DURATION)
     start = time.time()
@@ -229,8 +276,44 @@ def run_earn_session(sb, session_num, token):
     return True
 
 
+def send_tg_message(start_time):
+    if not (TELEGRAM_TOKEN and TELEGRAM_CHAT_ID):
+        return
+
+    end_time = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    sb.refresh()
+    time.sleep(5)
+    screenshot_path = "/tmp/earn_page.png"
+    try:
+        sb.save_screenshot(screenshot_path)
+        log("Screenshot saved to earn_page.png")
+    except Exception as e:
+        log("Failed to save screenshot: %s" % str(e))
+
+    try:
+        import requests
+        tg_msg = f"[FreezeHost] AFK finished!\nStart Time: {start_time}\nEnd Time: {end_time}\n"
+        if os.path.exists(screenshot_path):
+            with open(screenshot_path, "rb") as f:
+                requests.post(
+                    "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendPhoto",
+                    data={"chat_id": TELEGRAM_CHAT_ID, "caption": tg_msg},
+                    files={"photo": f}
+                )
+        else:
+            requests.post(
+                "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage",
+                data={"chat_id": TELEGRAM_CHAT_ID, "text": tg_msg}
+            )
+    except Exception as e:
+        log("Failed to send telegram message: %s" % str(e))
+
+
 def main():
     global global_start
+
+    start_time = time.strftime("%Y-%m-%d %H:%M:%S")
 
     if not DISCORD_TOKEN:
         print("ERROR: DISCORD_TOKEN not set!")
@@ -282,7 +365,8 @@ def main():
                 log("Session failed, retrying...")
 
             time.sleep(5)
-
+        
+    send_tg_message(start_time)
     log("Done!")
 
 
