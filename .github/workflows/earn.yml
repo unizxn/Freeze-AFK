@@ -68,3 +68,11 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python freeze_afk.py
+
+      - name: 上传截图（调试用）
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: aclclouds-screenshots
+          path: screenshots/
+          retention-days: 3

@@ -243,7 +243,7 @@ def run_earn_session(sb, session_num, token):
     if not token_val:
         log("Turnstile failed!")
         try:
-            sb.save_screenshot("/tmp/fh_fail_%d_%d.png" % (INSTANCE_ID, session_num))
+            sb.save_screenshot("screenshots/fh_fail_%d_%d.png" % (INSTANCE_ID, session_num))
         except:
             pass
         return False
@@ -283,7 +283,7 @@ def send_tg_message(start_time):
 
     sb.refresh()
     time.sleep(5)
-    screenshot_path = "/tmp/earn_page.png"
+    screenshot_path = "screenshots/earn_page.png"
     try:
         sb.save_screenshot(screenshot_path)
         log("Screenshot saved to earn_page.png")
