@@ -14,6 +14,7 @@ if platform.system().lower() == "linux":
     from pyvirtualdisplay import Display
     disp = Display(visible=False, size=(1920, 1080))
     disp.start()
+    log("virtual display started")
     os.environ["DISPLAY"] = disp.new_display_var
 
 from seleniumbase import SB
