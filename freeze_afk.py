@@ -10,12 +10,11 @@ import platform
 import sys
 
 # Linux 服务器上需要虚拟显示器
-if platform.system().lower() == "linux":
-    from pyvirtualdisplay import Display
-    disp = Display(visible=False, size=(1920, 1080))
-    disp.start()
-    print("virtual display started")
-    os.environ["DISPLAY"] = disp.new_display_var
+# if platform.system().lower() == "linux":
+#     from pyvirtualdisplay import Display
+#     disp = Display(visible=False, size=(1920, 1080))
+#     disp.start()
+#     os.environ["DISPLAY"] = disp.new_display_var
 
 from seleniumbase import SB
 from selenium.webdriver.common.action_chains import ActionChains
@@ -243,6 +242,7 @@ def run_earn_session(sb, session_num, token):
     if not token_val:
         log("Turnstile failed!")
         try:
+            os.makedirs("screenshots")
             sb.save_screenshot("screenshots/fh_fail_%d_%d.png" % (INSTANCE_ID, session_num))
         except:
             pass
@@ -335,6 +335,7 @@ def main():
         "uc": True,
         "test": True,
         "headed": True,
+        "xvfb": True,
         "chromium_arg": "--no-sandbox,--disable-dev-shm-usage,--disable-gpu,--window-size=1280,720",
     }
 
