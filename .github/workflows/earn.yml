@@ -14,6 +14,7 @@ jobs:
   earn:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+
     steps:
       - uses: actions/checkout@v4
 
@@ -21,12 +22,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          pip install seleniumbase
-          seleniumbase install chrome
-          seleniumbase install chromedriver
 
       - name: Install and Start sing-box
         env:
@@ -47,8 +42,8 @@ jobs:
 
           echo "Starting sing-box in background..."
           sudo sing-box run -c ~/.config/sing-box/config.json > sing-box.log 2>&1 &
+          
           sleep 3
-
           if pgrep -x "sing-box" > /dev/null; then
             echo "sing-box started successfully!"
           else
@@ -59,19 +54,25 @@ jobs:
 
           echo "Verifying proxy connection..."
           for i in {1..10}; do
-            if curl -s --proxy socks5://*2*.0.*0.*:40000 https://www.cloudflare.com/cdn-cgi/trace > /dev/null; then
+            if curl -s --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace > /dev/null; then
               echo "Proxy is working!"
-              curl --proxy socks5://*2*.0.*0.*:40000 https://www.cloudflare.com/cdn-cgi/trace
+              curl --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace
               break
             fi
             echo "Waiting for proxy to respond..."
             sleep 2
           done
 
+      - name: Install dependencies
+        run: |
+          pip install seleniumbase
+          seleniumbase install chrome
+          seleniumbase install chromedriver
+
       - name: Run AFK Earn
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          WARP_PROXY: "socks5://*2*.0.*0.*:40000"
+          WARP_PROXY: "socks5://127.0.0.1:40000"
           MAX_RUNTIME: ${{ github.event.inputs.duration || '300' }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
