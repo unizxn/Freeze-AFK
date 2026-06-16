@@ -23,6 +23,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies
+        run: |
+          pip install seleniumbase
+          seleniumbase install chrome
+          seleniumbase install chromedriver
+
       - name: Install and Start sing-box
         env:
           SING_BOX_CONFIG: ${{ secrets.SING_BOX_CONFIG }}
@@ -42,7 +48,7 @@ jobs:
 
           echo "Starting sing-box in background..."
           sudo sing-box run -c ~/.config/sing-box/config.json > sing-box.log 2>&1 &
-
+          
           sleep 3
           if pgrep -x "sing-box" > /dev/null; then
             echo "sing-box started successfully!"
@@ -63,12 +69,6 @@ jobs:
             sleep 2
           done
 
-      - name: Install dependencies
-        run: |
-          pip install seleniumbase
-          seleniumbase install chrome
-          seleniumbase install chromedriver
-
       - name: Run AFK Earn
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
@@ -86,14 +86,22 @@ jobs:
           path: screenshots/
           retention-days: 3
 
-  cleanup:
-    needs: earn
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete old workflow runs
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          retain_days: 0
-          keep_minimum_runs: 3
+      - name: Keep only last 3 workflow runs
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Cleaning up old workflow runs, keeping only the last 3..."
+          RUNS=$(gh run list --workflow=earn.yml --limit 100 --json databaseId --jq '.[].databaseId')
+          TOTAL=$(echo "$RUNS" | wc -l)
+          echo "Total runs found: $TOTAL"
+          if [ "$TOTAL" -gt 3 ]; then
+            DELETE_IDS=$(echo "$RUNS" | tail -n +4)
+            for ID in $DELETE_IDS; do
+              echo "Deleting run $ID..."
+              gh run delete "$ID" || echo "Failed to delete run $ID, skipping..."
+            done
+            echo "Cleanup complete. Kept the latest 3 runs."
+          else
+            echo "Only $TOTAL runs found, no cleanup needed."
+          fi
