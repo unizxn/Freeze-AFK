@@ -42,7 +42,7 @@ jobs:
 
           echo "Starting sing-box in background..."
           sudo sing-box run -c ~/.config/sing-box/config.json > sing-box.log 2>&1 &
-          
+
           sleep 3
           if pgrep -x "sing-box" > /dev/null; then
             echo "sing-box started successfully!"
@@ -85,3 +85,15 @@ jobs:
           name: freezehost-screenshots
           path: screenshots/
           retention-days: 3
+
+  cleanup:
+    needs: earn
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 3
