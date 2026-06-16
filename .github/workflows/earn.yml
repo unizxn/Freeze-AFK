@@ -5,7 +5,7 @@ on:
     inputs:
       duration:
         description: '运行时长（分钟）'
-        required: false
+        required: true
         default: '300'
   schedule:
     - cron: '0 */8 * * *'
@@ -14,32 +14,31 @@ jobs:
   earn:
     runs-on: ubuntu-latest
     timeout-minutes: 360
-
+    env:
+      DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+      SING_BOX_CONFIG: ${{ secrets.SING_BOX_CONFIG }}
+      INSTANCE_ID: ${{ github.run_number }}
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # 第一步：先安装 sing-box（使用代理）
       - name: Install and Start sing-box
-        env:
-          SING_BOX_CONFIG: ${{ secrets.SING_BOX_CONFIG }}
         run: |
           echo "Downloading sing-box..."
           curl -Lo sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.9.3/sing-box-1.9.3-linux-amd64.tar.gz
           tar -xzf sing-box.tar.gz
           sudo mv sing-box-1.9.3-linux-amd64/sing-box /usr/local/bin/
           rm -rf sing-box.tar.gz sing-box-1.9.3-linux-amd64
-
+          
           mkdir -p ~/.config/sing-box
           if [ -z "$SING_BOX_CONFIG" ]; then
             echo "ERROR: Please set the SING_BOX_CONFIG secret in your repository settings."
             exit 1
           fi
           echo "$SING_BOX_CONFIG" > ~/.config/sing-box/config.json
-
+          
           echo "Starting sing-box in background..."
           sudo sing-box run -c ~/.config/sing-box/config.json > sing-box.log 2>&1 &
           
@@ -51,37 +50,49 @@ jobs:
             cat sing-box.log
             exit 1
           fi
-
+          
           echo "Verifying proxy connection..."
           for i in {1..10}; do
             if curl -s --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace > /dev/null; then
               echo "Proxy is working!"
-              curl --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace
+              # 获取并显示掩码后的 IP
+              IP_INFO=$(curl -s --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep ip= | cut -d'=' -f2)
+              if [ -n "$IP_INFO" ]; then
+                # 掩码处理：只显示第二位和倒数第二位数字
+                MASKED_IP=$(echo "$IP_INFO" | sed 's/./&/g' | awk '{
+                  len = length($0)
+                  result = ""
+                  for(i=1; i<=len; i++) {
+                    c = substr($0, i, 1)
+                    if(i == 2 || i == len-1) {
+                      result = result c
+                    } else if(c == ".") {
+                      result = result c
+                    } else {
+                      result = result "*"
+                    }
+                  }
+                  print result
+                }')
+                echo "Proxy IP (masked): $MASKED_IP"
+              fi
               break
             fi
             echo "Waiting for proxy to respond..."
             sleep 2
           done
-
+      
+      # 第二步：安装依赖（通过代理）
       - name: Install dependencies
         run: |
-          pip install seleniumbase
-          seleniumbase install chrome
-          seleniumbase install chromedriver
-
-      - name: Run AFK Earn
-        env:
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          WARP_PROXY: "socks5://127.0.0.1:40000"
-          MAX_RUNTIME: ${{ github.event.inputs.duration || '300' }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python freeze_afk.py
-
-      - name: 上传截图（调试用）
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: freezehost-screenshots
-          path: screenshots/
-          retention-days: 3
+          echo "Installing Python dependencies through proxy..."
+          python -m pip install --upgrade pip
+          pip install seleniumbase pyvirtualdisplay
+      
+      # 第三步：运行脚本
+      - name: Run freeze-afk
+        run: |
+          echo "Starting freeze-afk with proxy..."
+          export https_proxy=socks5://127.0.0.1:40000
+          export http_proxy=socks5://127.0.0.1:40000
+          python freeze_afk.py
