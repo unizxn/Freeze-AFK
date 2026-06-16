@@ -48,7 +48,7 @@ jobs:
 
           echo "Starting sing-box in background..."
           sudo sing-box run -c ~/.config/sing-box/config.json > sing-box.log 2>&1 &
-          
+
           sleep 3
           if pgrep -x "sing-box" > /dev/null; then
             echo "sing-box started successfully!"
@@ -58,28 +58,14 @@ jobs:
             exit 1
           fi
 
+          echo "Creating IP mask script..."
+          printf '%s\n' 'import re,sys' 'for line in sys.stdin:' '  m=re.search(r"ip=(\d+\.\d+\.\d+\.\d+)",line)' '  if m:' '    ip=m.group(1)' '    d=ip.replace(".","")' '    mk="".join(c if i==1 or i==len(d)-2 else "*" for i,c in enumerate(d))' '    ps=ip.split(".");pos=0;r=[]' '    for p in ps:' '      r.append(mk[pos:pos+len(p)]);pos+=len(p)' '    print("ip="+".".join(r))' '  else:' '    print(line,end="")' > /tmp/mask_ip.py
+
           echo "Verifying proxy connection..."
           for i in {1..10}; do
             if curl -s --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace > /dev/null; then
               echo "Proxy is working!"
-              curl --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | python3 -c "
-import sys, re
-for line in sys.stdin:
-  m = re.search(r'ip=(\d+\.\d+\.\d+\.\d+)', line)
-  if m:
-    ip = m.group(1)
-    digits = ip.replace('.', '')
-    masked = ''.join(d if i == 1 or i == len(digits) - 2 else '*' for i, d in enumerate(digits))
-    parts = ip.split('.')
-    pos = 0
-    result = []
-    for p in parts:
-      result.append(masked[pos:pos + len(p)])
-      pos += len(p)
-    print('ip=' + '.'.join(result))
-  else:
-    print(line, end='')
-"
+              curl --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | python3 /tmp/mask_ip.py
               break
             fi
             echo "Waiting for proxy to respond..."
