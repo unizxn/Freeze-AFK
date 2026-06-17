@@ -25,9 +25,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install seleniumbase
-          seleniumbase install chrome
-          seleniumbase install chromedriver
+          # CloakBrowser：C++ 源码级 stealth Chromium，过 Cloudflare Turnstile
+          #   - cloakbrowser[geoip]  含 geoip 自动时区/语言匹配
+          #   - pyvirtualdisplay     Linux 无显示器时自动起 Xvfb（headed 模式必需）
+          #   - requests             Telegram 通知用
+          pip install cloakbrowser[geoip] pyvirtualdisplay requests
+
+          # pyvirtualdisplay 依赖系统 xvfb 二进制
+          sudo apt-get update
+          sudo apt-get install -y xvfb
 
       - name: Install and Start sing-box
         env:
