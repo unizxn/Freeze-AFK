@@ -23,18 +23,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          # CloakBrowser：C++ 源码级 stealth Chromium，过 Cloudflare Turnstile
-          #   - cloakbrowser[geoip]  含 geoip 自动时区/语言匹配
-          #   - pyvirtualdisplay     Linux 无显示器时自动起 Xvfb（headed 模式必需）
-          #   - requests             Telegram 通知用
-          pip install cloakbrowser[geoip] pyvirtualdisplay requests
-
-          # pyvirtualdisplay 依赖系统 xvfb 二进制
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
       - name: Install and Start sing-box
         env:
           SING_BOX_CONFIG: ${{ secrets.SING_BOX_CONFIG }}
@@ -54,7 +42,7 @@ jobs:
 
           echo "Starting sing-box in background..."
           sudo sing-box run -c ~/.config/sing-box/config.json > sing-box.log 2>&1 &
-
+          
           sleep 3
           if pgrep -x "sing-box" > /dev/null; then
             echo "sing-box started successfully!"
@@ -64,19 +52,22 @@ jobs:
             exit 1
           fi
 
-          echo "Creating IP mask script..."
-          printf '%s\n' 'import re,sys' 'for line in sys.stdin:' '  m=re.search(r"ip=(\d+\.\d+\.\d+\.\d+)",line)' '  if m:' '    ip=m.group(1)' '    d=ip.replace(".","")' '    mk="".join(c if i==1 or i==len(d)-2 else "*" for i,c in enumerate(d))' '    ps=ip.split(".");pos=0;r=[]' '    for p in ps:' '      r.append(mk[pos:pos+len(p)]);pos+=len(p)' '    print("ip="+".".join(r))' '  else:' '    print(line,end="")' > /tmp/mask_ip.py
-
           echo "Verifying proxy connection..."
           for i in {1..10}; do
             if curl -s --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace > /dev/null; then
               echo "Proxy is working!"
-              curl --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | python3 /tmp/mask_ip.py
+              curl --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace
               break
             fi
             echo "Waiting for proxy to respond..."
             sleep 2
           done
+
+      - name: Install dependencies
+        run: |
+          pip install seleniumbase
+          seleniumbase install chrome
+          seleniumbase install chromedriver
 
       - name: Run AFK Earn
         env:
@@ -94,23 +85,3 @@ jobs:
           name: freezehost-screenshots
           path: screenshots/
           retention-days: 3
-
-      - name: Keep only last 3 workflow runs
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Cleaning up old workflow runs, keeping only the last 3..."
-          RUNS=$(gh run list --workflow=earn.yml --limit 100 --json databaseId --jq '.[].databaseId')
-          TOTAL=$(echo "$RUNS" | wc -l)
-          echo "Total runs found: $TOTAL"
-          if [ "$TOTAL" -gt 3 ]; then
-            DELETE_IDS=$(echo "$RUNS" | tail -n +4)
-            for ID in $DELETE_IDS; do
-              echo "Deleting run $ID..."
-              gh run delete "$ID" || echo "Failed to delete run $ID, skipping..."
-            done
-            echo "Cleanup complete. Kept the latest 3 runs."
-          else
-            echo "Only $TOTAL runs found, no cleanup needed."
-          fi
