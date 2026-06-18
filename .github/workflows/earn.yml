@@ -91,11 +91,8 @@ jobs:
         run: |
           echo "Cleaning up old workflow runs, keeping only the last 3..."
           
-          # 使用 workflow ID 而不是名称（更可靠）
-          WORKFLOW_ID=$(gh workflow view ".github/workflows/earn.yml" --json id --jq .id)
-          echo "Workflow ID: $WORKFLOW_ID"
-          
-          RUNS=$(gh run list --workflow="$WORKFLOW_ID" --limit 100 --json databaseId --jq '.[].databaseId')
+          # 直接通过 workflow 文件名列出 runs
+          RUNS=$(gh run list --workflow "earn.yml" --limit 100 --json databaseId --jq '.[].databaseId')
           TOTAL=$(echo "$RUNS" | grep -c .)
           echo "Total runs found: $TOTAL"
           
