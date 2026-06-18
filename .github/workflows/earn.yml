@@ -76,7 +76,7 @@ jobs:
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           WARP_PROXY: "socks5://127.0.0.1:40000"
-          MAX_RUNTIME: ${{ github.event.inputs.duration || '300' }}
+          MAX_RUNTIME: ${{ github.event.inputs.duration || '120' }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python freeze_afk.py
