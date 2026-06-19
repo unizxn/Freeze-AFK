@@ -10,6 +10,10 @@ on:
   schedule:
     - cron: '15 */3 * * *'
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   earn:
     runs-on: ubuntu-latest
@@ -34,10 +38,10 @@ jobs:
           SING_BOX_CONFIG: ${{ secrets.SING_BOX_CONFIG }}
         run: |
           echo "Downloading sing-box..."
-          curl -Lo sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.9.3/sing-box-1.9.3-linux-amd64.tar.gz
+          curl -Lo sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.13.13/sing-box-1.13.13-linux-amd64.tar.gz
           tar -xzf sing-box.tar.gz
-          sudo mv sing-box-1.9.3-linux-amd64/sing-box /usr/local/bin/
-          rm -rf sing-box.tar.gz sing-box-1.9.3-linux-amd64
+          sudo mv sing-box-1.13.13-linux-amd64/sing-box /usr/local/bin/
+          rm -rf sing-box.tar.gz sing-box-1.13.13-linux-amd64
 
           mkdir -p ~/.config/sing-box
           if [ -z "$SING_BOX_CONFIG" ]; then
@@ -81,10 +85,20 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python freeze_afk.py
 
-      - name: 上传截图（调试用）
+      - name: Upload Screenshots (Debug)
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: freezehost-screenshots
           path: screenshots/
           retention-days: 3
+
+      - name: Clean Up Workflow Run History
+        if: always()
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          delete_workflow_pattern: ${{ github.workflow }}
+          retain_days: 0
+          keep_minimum_runs: 3
