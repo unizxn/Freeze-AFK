@@ -10,12 +10,12 @@ on:
   schedule:
     - cron: '0 */3 * * *'
 
-# 添加并发控制，防止任务意外堆积
+# Add concurrency control to prevent overlapping runs
 concurrency:
   group: earn-workflow
   cancel-in-progress: true
 
-# 赋予清理脚本删除 workflow runs 的权限（修复 HTTP 403 权限报错）
+# Grant permissions to delete workflow runs (Fixes HTTP 403 error)
 permissions:
   actions: write
   contents: read
@@ -90,14 +90,14 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python freeze_afk.py
         
-      - name: 上传截图（调试用）
+      - name: Upload screenshots (Debug)
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: freezehost-screenshots
           path: screenshots/
           retention-days: 3
-          if-no-files-found: ignore # 修复：如果没找到截图文件不报错警告
+          if-no-files-found: ignore # Ignore warning if no files found
           
       - name: Keep only last 3 workflow runs
         if: always()
@@ -105,7 +105,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Cleaning up old workflow runs, keeping only the last 3..."
-          # 直接通过 workflow 文件名列出 runs
+          # List runs by workflow file name directly
           RUNS=$(gh run list --workflow "earn.yml" --limit 100 --json databaseId --jq '.[].databaseId')
           TOTAL=$(echo "$RUNS" | grep -c .)
           echo "Total runs found: $TOTAL"
