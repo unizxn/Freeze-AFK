@@ -15,7 +15,7 @@ concurrency:
   group: earn-workflow
   cancel-in-progress: true
 
-# 赋予清理脚本删除 workflow runs 的权限（关键修复！）
+# 赋予清理脚本删除 workflow runs 的权限（修复 HTTP 403 权限报错）
 permissions:
   actions: write
   contents: read
@@ -97,6 +97,7 @@ jobs:
           name: freezehost-screenshots
           path: screenshots/
           retention-days: 3
+          if-no-files-found: ignore # 修复：如果没找到截图文件不报错警告
           
       - name: Keep only last 3 workflow runs
         if: always()
