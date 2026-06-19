@@ -8,55 +8,48 @@ on:
         required: false
         default: '120'
   schedule:
-    - cron: '10 */3 * * *'
-
-concurrency:
-  group: earn-workflow
-  cancel-in-progress: true
-
-permissions:
-  actions: write
-  contents: read
+    - cron: '15 */3 * * *'
 
 jobs:
   earn:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
+
       - name: Install dependencies
         run: |
           pip install seleniumbase
           seleniumbase install chrome
           seleniumbase install chromedriver
-          
+
       - name: Install and Start sing-box
         env:
           SING_BOX_CONFIG: ${{ secrets.SING_BOX_CONFIG }}
         run: |
           echo "Downloading sing-box..."
-          curl -Lo sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.13.13/sing-box-1.13.13-linux-amd64.tar.gz
+          curl -Lo sing-box.tar.gz https://github.com/SagerNet/sing-box/releases/download/v1.9.3/sing-box-1.9.3-linux-amd64.tar.gz
           tar -xzf sing-box.tar.gz
-          sudo mv sing-box-1.13.13-linux-amd64/sing-box /usr/local/bin/
-          rm -rf sing-box.tar.gz sing-box-1.13.13-linux-amd64
+          sudo mv sing-box-1.9.3-linux-amd64/sing-box /usr/local/bin/
+          rm -rf sing-box.tar.gz sing-box-1.9.3-linux-amd64
+
           mkdir -p ~/.config/sing-box
-          
           if [ -z "$SING_BOX_CONFIG" ]; then
             echo "ERROR: Please set the SING_BOX_CONFIG secret in your repository settings."
             exit 1
           fi
-          
           echo "$SING_BOX_CONFIG" > ~/.config/sing-box/config.json
+
           echo "Starting sing-box in background..."
           sudo sing-box run -c ~/.config/sing-box/config.json > sing-box.log 2>&1 &
+
           sleep 3
-          
           if pgrep -x "sing-box" > /dev/null; then
             echo "sing-box started successfully!"
           else
@@ -64,24 +57,10 @@ jobs:
             cat sing-box.log
             exit 1
           fi
-          
+
           echo "Creating IP mask script..."
-          cat << 'EOF' > /tmp/mask_ip.py
-import re,sys
-for line in sys.stdin:
-    m=re.search(r"ip=(\d+\.\d+\.\d+\.\d+)",line)
-    if m:
-        ip=m.group(1)
-        d=ip.replace(".","")
-        mk="".join(c if i==1 or i==len(d)-2 else "*" for i,c in enumerate(d))
-        ps=ip.split(".");pos=0;r=[]
-        for p in ps:
-            r.append(mk[pos:pos+len(p)]);pos+=len(p)
-        print("ip="+".".join(r))
-    else:
-        print(line,end="")
-EOF
-          
+          printf '%s\n' 'import re,sys' 'for line in sys.stdin:' '  m=re.search(r"ip=(\d+\.\d+\.\d+\.\d+)",line)' '  if m:' '    ip=m.group(1)' '    d=ip.replace(".","")' '    mk="".join(c if i==1 or i==len(d)-2 else "*" for i,c in enumerate(d))' '    ps=ip.split(".");pos=0;r=[]' '    for p in ps:' '      r.append(mk[pos:pos+len(p)]);pos+=len(p)' '    print("ip="+".".join(r))' '  else:' '    print(line,end="")' > /tmp/mask_ip.py
+
           echo "Verifying proxy connection..."
           for i in {1..10}; do
             if curl -s --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace > /dev/null; then
@@ -92,7 +71,7 @@ EOF
             echo "Waiting for proxy to respond..."
             sleep 2
           done
-          
+
       - name: Run AFK Earn
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
@@ -101,33 +80,11 @@ EOF
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python freeze_afk.py
-        
-      - name: Upload screenshots (Debug)
+
+      - name: 上传截图（调试用）
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: freezehost-screenshots
           path: screenshots/
           retention-days: 3
-          if-no-files-found: ignore
-          
-      - name: Keep only last 3 workflow runs
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Cleaning up old workflow runs, keeping only the last 3..."
-          RUNS=$(gh run list --workflow "earn.yml" --limit 100 --json databaseId --jq '.[].databaseId')
-          TOTAL=$(echo "$RUNS" | grep -c .)
-          echo "Total runs found: $TOTAL"
-          
-          if [ "$TOTAL" -gt 3 ]; then
-            DELETE_IDS=$(echo "$RUNS" | tail -n +4)
-            for ID in $DELETE_IDS; do
-              echo "Deleting run $ID..."
-              gh run delete "$ID" || echo "Failed to delete run $ID"
-            done
-            echo "Cleanup complete. Kept the latest 3 runs."
-          else
-            echo "Only $TOTAL runs found, no cleanup needed."
-          fi
