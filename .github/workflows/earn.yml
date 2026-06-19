@@ -8,14 +8,12 @@ on:
         required: false
         default: '120'
   schedule:
-    - cron: '0 */3 * * *'
+    - cron: '10 */3 * * *'
 
-# Add concurrency control to prevent overlapping runs
 concurrency:
   group: earn-workflow
   cancel-in-progress: true
 
-# Grant permissions to delete workflow runs (Fixes HTTP 403 error)
 permissions:
   actions: write
   contents: read
@@ -68,7 +66,21 @@ jobs:
           fi
           
           echo "Creating IP mask script..."
-          printf '%s\n' 'import re,sys' 'for line in sys.stdin:' ' m=re.search(r"ip=(\d+\.\d+\.\d+\.\d+)",line)' ' if m:' ' ip=m.group(1)' ' d=ip.replace(".","")' ' mk="".join(c if i==1 or i==len(d)-2 else "\*" for i,c in enumerate(d))' ' ps=ip.split(".");pos=0;r=[]' ' for p in ps:' ' r.append(mk[pos:pos+len(p)]);pos+=len(p)' ' print("ip="+".".join(r))' ' else:' ' print(line,end="")' > /tmp/mask_ip.py
+          cat << 'EOF' > /tmp/mask_ip.py
+import re,sys
+for line in sys.stdin:
+    m=re.search(r"ip=(\d+\.\d+\.\d+\.\d+)",line)
+    if m:
+        ip=m.group(1)
+        d=ip.replace(".","")
+        mk="".join(c if i==1 or i==len(d)-2 else "*" for i,c in enumerate(d))
+        ps=ip.split(".");pos=0;r=[]
+        for p in ps:
+            r.append(mk[pos:pos+len(p)]);pos+=len(p)
+        print("ip="+".".join(r))
+    else:
+        print(line,end="")
+EOF
           
           echo "Verifying proxy connection..."
           for i in {1..10}; do
@@ -97,7 +109,7 @@ jobs:
           name: freezehost-screenshots
           path: screenshots/
           retention-days: 3
-          if-no-files-found: ignore # Ignore warning if no files found
+          if-no-files-found: ignore
           
       - name: Keep only last 3 workflow runs
         if: always()
@@ -105,7 +117,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Cleaning up old workflow runs, keeping only the last 3..."
-          # List runs by workflow file name directly
           RUNS=$(gh run list --workflow "earn.yml" --limit 100 --json databaseId --jq '.[].databaseId')
           TOTAL=$(echo "$RUNS" | grep -c .)
           echo "Total runs found: $TOTAL"
